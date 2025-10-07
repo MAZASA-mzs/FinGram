@@ -1,0 +1,23 @@
+# Telegram Bot
+aiogram>=3.7.0
+
+# API Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Database (ORM)
+sqlalchemy[asyncio]>=2.0.30
+aiosqlite>=0.20.0
+alembic>=1.13.1
+
+# XLSX Parsing
+openpyxl>=3.1.3
+
+# Reporting
+pandas>=2.2.2
+
+# Configuration
+pydantic-settings>=2.3.1
+
+# HTTP-клиент для Ollama
+httpx>=0.27.0
