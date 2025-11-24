@@ -3,6 +3,7 @@ import io
 import datetime
 
 from aiogram import Bot, Dispatcher, F, types
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
@@ -21,7 +22,8 @@ log = logging.getLogger(__name__)
 
 # --- Инициализация бота ---
 try:
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN,
+              default=DefaultBotProperties(parse_mode='HTML'))
     dp = Dispatcher()
 except Exception as e:
     log.critical(f"Ошибка инициализации Telegram-бота: {e}", exc_info=True)
