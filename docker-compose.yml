@@ -1,0 +1,26 @@
+services:
+  fingram-bot:
+    build: .
+    container_name: fingram_bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data           # Персистентное хранение БД и логов
+      - ./config:/app/config       # Проброс конфигов
+    env_file:
+      - .env
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - OLLAMA_URL=http://host.docker.internal:11434  # Для доступа к Ollama на хосте (Linux)
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Разрешаем доступ к хосту из контейнера
+
+  # Опционально: можно запускать Ollama внутри композа
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   ports:
+  #     - "11434:11434"
+
+volumes:
+  ollama_data:
