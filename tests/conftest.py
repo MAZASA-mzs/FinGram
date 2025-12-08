@@ -1,21 +1,41 @@
+import sys
+import os
+tests_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(tests_dir, '..')
+sys.path.insert(0, project_root)
+
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
-from src.infrastructure.database.models import User, Note
 from src.core.interfaces import Transaction, UserNote
-
+from src.infrastructure.database.models import User, Note
 
 @pytest.fixture
 def mock_user():
-    user = User(
+    return User(
         id=1,
-        telegram_id=123456789,
+        telegram_id=12345,
         username="test_user",
-        categories_list="Еда, Такси",
-        custom_prompts=""
+        categories_list="Еда, Транспорт",
+        custom_prompts="Подсказка"
     )
-    return user
 
+@pytest.fixture
+def sample_transaction():
+    return Transaction(
+        date=datetime(2023, 10, 1),
+        amount=500.0,
+        description="Пятерочка",
+        currency="RUB"
+    )
+
+@pytest.fixture
+def sample_note():
+    return Note(
+        id=1,
+        user_id=1,
+        raw_text="Купил хлеб",
+        created_at=datetime(2023, 10, 1)
+    )
 
 @pytest.fixture
 def mock_transaction():
@@ -25,7 +45,6 @@ def mock_transaction():
         description="Супермаркет",
         currency="RUB"
     )
-
 
 @pytest.fixture
 def sample_notes(mock_user):
