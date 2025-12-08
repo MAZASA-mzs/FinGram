@@ -6,14 +6,22 @@ from aiogram.filters import Command
 from aiogram.types import FSInputFile, BufferedInputFile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-from src.infrastructure.database.models import Base, User, Note
-from src.infrastructure.implementations import SberParser, OllamaProvider
-from src.core.processor import Processor
+from infrastructure.database.models import Base, User, Note
+from infrastructure.implementations import SberParser, OllamaProvider
+from core.processor import Processor
 import yaml
 
 # --- CONFIG & SETUP ---
 logging.basicConfig(level=logging.INFO)
+
+env_file_path = os.path.join(os.getcwd(), "config", ".env")
+load_dotenv(dotenv_path=env_file_path)
+# load_dotenv()
+print(env_file_path)
+print(os.getenv("TELEGRAM_BOT_TOKEN"))
+print(os.getenv("OLLAMA_API_URL"))
 
 # Загрузка конфига
 with open('config/config.yaml', 'r') as f:
@@ -25,7 +33,7 @@ Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
 # Init Components
-bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
 
 # Services

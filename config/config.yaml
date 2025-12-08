@@ -1,7 +1,7 @@
 system:
   whitelist: 
     - 123456789  # Telegram User ID админа
-    - 987654321
+    - 1002748248
   
 llm:
   provider: "ollama"  # Возможные значения: ollama, yandex, openai
