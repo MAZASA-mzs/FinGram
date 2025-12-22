@@ -7,10 +7,7 @@ services:
       - ./data:/app/data           # Персистентное хранение БД и логов
       - ./config:/app/config       # Проброс конфигов
     env_file:
-      - .env
-    environment:
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - OLLAMA_URL=http://host.docker.internal:11434  # Для доступа к Ollama на хосте (Linux)
+      - config/.env
     extra_hosts:
       - "host.docker.internal:host-gateway" # Разрешаем доступ к хосту из контейнера
 
