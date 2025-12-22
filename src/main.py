@@ -29,9 +29,14 @@ async def main():
         **config_yaml,
         'token': os.getenv("TELEGRAM_BOT_TOKEN"),
         'allowed_user_ids': os.getenv("ALLOWED_USER_IDS"),
+        # OLLAMA
         'ollama_url': os.getenv("OLLAMA_API_URL"),
         'ollama_model': os.getenv("OLLAMA_MODEL", "llama3"),
-        'db_url': os.getenv("DATABASE_URL")
+        'db_url': os.getenv("DATABASE_URL"),
+        # YANDEX
+        'yandex_api_key': os.getenv("YANDEX_CLOUD_API_KEY"),
+        'yandex_folder_id': os.getenv("YANDEX_CLOUD_FOLDER"),
+        'yandex_model_name': os.getenv("YANDEX_CLOUD_MODEL", "yandexgpt-lite"),
     }
 
     # 2. Инициализация инфраструктуры
@@ -43,7 +48,6 @@ async def main():
         await conn.run_sync(Base.metadata.create_all)
 
     # 3. Сборка зависимостей (DI)
-    llm_provider = OllamaProvider(config['ollama_url'], config['ollama_model'])
     bank_parser = SberParser()
     report_gen = BasicCSVReportGenerator()
 
@@ -51,9 +55,9 @@ async def main():
 
     if provider_type == "yandex":
         llm_provider = YandexGPTProvider(
-            api_key=os.getenv("YANDEX_CLOUD_API_KEY"),
-            folder_id=os.getenv("YANDEX_CLOUD_FOLDER"),
-            model_name=os.getenv("YANDEX_CLOUD_MODEL", "yandexgpt-lite")
+            api_key=config['yandex_api_key'],
+            folder_id=config['yandex_folder_id'],
+            model_name=config['yandex_model_name']
         )
         logging.info("Using YandexGPT provider")
     else:
