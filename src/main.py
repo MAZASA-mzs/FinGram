@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.infrastructure.database.models import Base
 from src.infrastructure.reporters.basic_csv import BasicCSVReportGenerator
+from src.infrastructure.llm.yandex import YandexGPTProvider
 from src.infrastructure.llm.ollama import OllamaProvider
 from src.infrastructure.parsers.sber import SberParser
 from src.core.processor import Processor
@@ -46,6 +47,23 @@ async def main():
     bank_parser = SberParser()
     report_gen = BasicCSVReportGenerator()
 
+    provider_type = os.getenv("LLM_PROVIDER_TYPE", "ollama").lower()
+
+    if provider_type == "yandex":
+        llm_provider = YandexGPTProvider(
+            api_key=os.getenv("YANDEX_CLOUD_API_KEY"),
+            folder_id=os.getenv("YANDEX_CLOUD_FOLDER"),
+            model_name=os.getenv("YANDEX_CLOUD_MODEL", "yandexgpt-lite")
+        )
+        logging.info("Using YandexGPT provider")
+    else:
+        llm_provider = OllamaProvider(
+            config['ollama_url'],
+            config['ollama_model']
+        )
+        logging.info("Using Ollama provider")
+
+    # Дальнейшая инициализация processor не меняется
     processor = Processor(
         parser=bank_parser,
         llm=llm_provider,

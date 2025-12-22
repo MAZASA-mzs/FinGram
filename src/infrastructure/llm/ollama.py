@@ -1,8 +1,7 @@
 import json
+import re
 from typing import List
-
 import aiohttp
-
 from src.core.dtypes import Transaction, UserNote
 from src.core.interfaces import BaseLLMProvider
 
@@ -12,6 +11,21 @@ class OllamaProvider(BaseLLMProvider):
         self.base_url = base_url
         self.model = model
 
+    def _clean_json_response(self, response_text: str) -> str:
+        """Очищает ответ LLM от Markdown и лишнего текста, оставляя только JSON."""
+        # Убираем блоки кода ```json ... ```
+        clean_text = re.sub(r'```json\s*', '', response_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'```', '', clean_text)
+
+        # Пытаемся найти границы JSON объекта { ... }
+        start_idx = clean_text.find('{')
+        end_idx = clean_text.rfind('}')
+
+        if start_idx != -1 and end_idx != -1:
+            clean_text = clean_text[start_idx:end_idx + 1]
+
+        return clean_text.strip()
+
     async def categorize_transaction(
             self,
             transaction: Transaction,
@@ -20,38 +34,48 @@ class OllamaProvider(BaseLLMProvider):
             user_hints: str
     ) -> dict:
 
-        notes_text = "\n".join([f"- [{n.timestamp.strftime('%d.%m %H:%M')}] {n.text}" for n in nearby_notes])
-        if not notes_text:
-            notes_text = "Нет заметок рядом с этой датой."
+        # Формируем контекст заметок. Для глупой модели важно не перегружать контекст.
+        if nearby_notes:
+            notes_context = "\n".join([f"- {n.text} ({n.timestamp.strftime('%d.%m')})" for n in nearby_notes])
+        else:
+            notes_context = "Нет заметок."
 
+        # Максимально "сухой" промпт
         prompt = f"""
-        Роль: Финансовый аналитик.
-        Задача: Категоризировать транзакцию, используя описание от банка и заметки пользователя.
+ЗАДАЧА: Определи категорию траты и напиши короткий комментарий.
 
-        ВХОДНЫЕ ДАННЫЕ:
-        1. Транзакция: {transaction.date.strftime('%Y-%m-%d')} | {transaction.amount} RUB | {transaction.description}
-        2. Доступные категории: {", ".join(categories)}
-        3. Заметки пользователя (могут пояснять трату):
-        {notes_text}
-        4. Глобальные подсказки пользователя: {user_hints}
+ВХОДНЫЕ ДАННЫЕ:
+Транзакция: "{transaction.description}"
+Сумма: {transaction.amount}
+Дата: {transaction.date.strftime('%Y-%m-%d')}
+Заметки пользователя (могут содержать подсказку):
+{notes_context}
 
-        ПРАВИЛА:
-        - Если есть подходящая заметка по сумме/времени, бери информацию из неё.
-        - Если заметки нет, анализируй описание банка.
-        - Ответ должен быть валидным JSON.
+СПИСОК КАТЕГОРИЙ (ВЫБЕРИ ОДНУ СТРОГО ИЗ СПИСКА):
+{json.dumps(categories, ensure_ascii=False)}
 
-        ФОРМАТ ОТВЕТА (JSON):
-        {{
-            "category": "одна из доступных категорий или 'Разное'",
-            "comment": "короткое пояснение или текст из заметки"
-        }}
-        """
+Глобальные подсказки: {user_hints}
 
+ИНСТРУКЦИЯ:
+1. Если в заметках есть совпадение по сумме или смыслу — используй информацию оттуда.
+2. Если заметок нет — угадай категорию по описанию транзакции.
+3. Верни ТОЛЬКО валидный JSON.
+
+ПРИМЕР ОТВЕТА:
+{{
+  "category": "Еда",
+  "comment": "Покупка в магазине (из заметки)"
+}}
+"""
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
+            "format": "json",  # Ollama поддерживает enforced JSON mode
+            "options": {
+                "temperature": 0.1,  # Снижаем креативность для стабильности
+                "num_ctx": 4096
+            }
         }
 
         async with aiohttp.ClientSession() as session:
@@ -59,8 +83,22 @@ class OllamaProvider(BaseLLMProvider):
                 async with session.post(f"{self.base_url}/api/generate", json=payload) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        return json.loads(data.get('response', '{}'))
-            except Exception as e:
-                print(f"LLM Error: {e}")
+                        raw_response = data.get('response', '{}')
 
-        return {"category": "Ошибка API", "comment": "Не удалось связаться с LLM"}
+                        # Пытаемся почистить и распарсить
+                        clean_json_str = self._clean_json_response(raw_response)
+                        try:
+                            result = json.loads(clean_json_str)
+                            # Проверяем, что категория реально из списка, иначе "Разное"
+                            if result.get('category') not in categories:
+                                result['category'] = 'Разное'
+                            return result
+                        except json.JSONDecodeError:
+                            print(f"JSON Parse Error. Raw: {raw_response}")
+                            return {"category": "Разное", "comment": "Ошибка чтения ответа LLM"}
+                    else:
+                        print(f"Ollama Error {resp.status}")
+            except Exception as e:
+                print(f"Connection Error: {e}")
+
+        return {"category": "Разное", "comment": "Ошибка соединения"}
