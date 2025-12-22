@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timedelta
 
 from src.core.processor import Processor
-from src.infrastructure.implementations import SberParser, OllamaProvider
+from src.infrastructure.llm.ollama import OllamaProvider
+from src.infrastructure.parsers.sber import SberParser
 from src.infrastructure.database.models import Note
 from src.core.interfaces import Transaction
 

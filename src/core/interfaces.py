@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List
 import io
-from src.core.dtypes import Transaction, UserNote
+from src.core.dtypes import Transaction, UserNote, ExportFile
+
 
 class BaseBankParser(ABC):
     """Интерфейс для парсеров банковских выписок"""
@@ -29,6 +30,6 @@ class BaseLLMProvider(ABC):
 class BaseReportGenerator(ABC):
     """Интерфейс для генерации выходных отчетов"""
     @abstractmethod
-    def generate(self, transactions: List[Transaction]) -> io.BytesIO:
+    def generate(self, transactions: List[Transaction]) -> ExportFile:
         """Возвращает байтовый поток файла"""
         pass

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.core.interfaces import BaseBankParser, BaseLLMProvider, BaseReportGenerator
-from src.core.dtypes import Transaction, UserNote
+from src.core.dtypes import Transaction, UserNote, ExportFile
 from src.infrastructure.database.models import User, Note
 
 
@@ -22,7 +22,7 @@ class Processor:
         self.report_gen = report_gen
         self.window_days = window_days
 
-    async def process_statement(self, user: User, file_path: str, db: AsyncSession) -> 3:
+    async def process_statement(self, user: User, file_path: str, db: AsyncSession) -> ExportFile:
         # 1. Парсинг
         if not self.parser.validate_format(file_path):
             raise ValueError("Формат файла не поддерживается текущим парсером.")

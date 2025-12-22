@@ -1,7 +1,7 @@
 import pytest
 import json
 from aioresponses import aioresponses
-from src.infrastructure.implementations import OllamaProvider
+from src.infrastructure.llm.ollama import OllamaProvider
 
 
 @pytest.mark.asyncio

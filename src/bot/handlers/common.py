@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import BufferedInputFile
 import os
 
+from src.core.dtypes import ExportFile
 from src.infrastructure.database.models import Note
 
 router = Router()
@@ -32,11 +33,12 @@ async def handle_document(message: types.Message, user, db_session, bot, process
     await bot.download_file(file.file_path, file_path)
 
     try:
-        report_bytes = await processor.process_statement(user, file_path, db_session)
-
+        report: ExportFile = await processor.process_statement(user, file_path, db_session)
+        report_bytes = report.file_content
+        report_ext = report.file_ext
         input_file = BufferedInputFile(
             report_bytes.read(),
-            filename=f"report_{doc.file_name.split('.')[0]}.csv"
+            filename=f"report_{doc.file_name.split('.')[0]}.{report_ext}"
         )
         await message.answer_document(input_file, caption="✅ Твой отчет готов!")
     except Exception as e:

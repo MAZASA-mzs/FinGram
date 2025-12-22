@@ -6,7 +6,9 @@ from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.infrastructure.database.models import Base
-from src.infrastructure.implementations import SberParser, OllamaProvider, CSVReportGenerator
+from src.infrastructure.reporters.basic_csv import BasicCSVReportGenerator
+from src.infrastructure.llm.ollama import OllamaProvider
+from src.infrastructure.parsers.sber import SberParser
 from src.core.processor import Processor
 from src.bot.middlewares import AuthMiddleware
 from src.bot.handlers import common, settings
@@ -42,7 +44,7 @@ async def main():
     # 3. Сборка зависимостей (DI)
     llm_provider = OllamaProvider(config['ollama_url'], config['ollama_model'])
     bank_parser = SberParser()
-    report_gen = CSVReportGenerator()
+    report_gen = BasicCSVReportGenerator()
 
     processor = Processor(
         parser=bank_parser,

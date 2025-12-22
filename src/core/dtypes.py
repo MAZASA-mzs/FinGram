@@ -1,3 +1,4 @@
+import io
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -16,3 +17,8 @@ class UserNote:
     id: int
     text: str
     timestamp: datetime
+
+@dataclass
+class ExportFile:
+    file_ext: str
+    file_content: io.BytesIO

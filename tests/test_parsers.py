@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from src.infrastructure.implementations import SberParser
+from src.infrastructure.parsers.sber import SberParser
 
 
 def test_validate_format_success():
