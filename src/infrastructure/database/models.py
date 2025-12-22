@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, BigInteger
-from sqlalchemy.orm import relationship, declarative_base
+import json
 from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, BigInteger
+from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
 
@@ -12,32 +13,30 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String, nullable=True)
 
-    # Пользовательские настройки (храним как JSON строку или отдельные поля)
-    categories_list = Column(Text, default="Еда, Транспорт, Жилье, Развлечения, Здоровье")
-    custom_prompts = Column(Text, default="Если я пишу 'Вкусвилл', это категория Еда.")
+    # Храним категории как JSON-строку
+    _categories_json = Column("categories", Text, default="[]")
+
+    # Пользовательские подсказки для LLM
+    custom_prompts = Column(Text, default="")
 
     created_at = Column(DateTime, default=datetime.utcnow)
-
     notes = relationship("Note", back_populates="user")
+
+    def get_categories(self) -> list[str]:
+        if not self._categories_json:
+            return []
+        return json.loads(self._categories_json)
+
+    def set_categories(self, categories: list[str]):
+        self._categories_json = json.dumps(categories, ensure_ascii=False)
 
 
 class Note(Base):
-    """
-    Заметки на естественном языке, которые пользователь отправляет боту.
-    """
     __tablename__ = 'notes'
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-
-    raw_text = Column(Text, nullable=False)  # Исходный текст
-    created_at = Column(DateTime, default=datetime.utcnow)  # Время создания заметки
-
-    # Флаг, была ли заметка использована для закрытия какой-то транзакции
-    # (для сложной логики можно расширить до Many-to-Many)
-    is_processed = Column(Boolean, default=False)
+    raw_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="notes")
-
-# Транзакции здесь не храним персистентно, так как они парсятся из файла "на лету",
-# но если нужно вести историю, можно добавить модель Transaction.

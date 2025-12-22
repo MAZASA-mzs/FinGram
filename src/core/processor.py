@@ -1,80 +1,71 @@
-import csv
 import io
 from datetime import timedelta
 from typing import List
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from src.core.interfaces import BaseBankParser, BaseLLMProvider, Transaction, UserNote
+from src.core.interfaces import BaseBankParser, BaseLLMProvider, BaseReportGenerator
+from src.core.dtypes import Transaction, UserNote
 from src.infrastructure.database.models import User, Note
 
 
 class Processor:
-    def __init__(self, parser: BaseBankParser, llm: BaseLLMProvider):
+    def __init__(
+            self,
+            parser: BaseBankParser,
+            llm: BaseLLMProvider,
+            report_gen: BaseReportGenerator,
+            window_days: int = 2
+    ):
         self.parser = parser
         self.llm = llm
+        self.report_gen = report_gen
+        self.window_days = window_days
 
-    async def process_statement(self, user: User, file_path: str, db: Session) -> io.StringIO:
-        """
-        Основной пайплайн:
-        1. Парсинг файла
-        2. Выборка заметок из БД
-        3. Запрос к LLM по каждой транзакции
-        4. Генерация CSV
-        """
+    async def process_statement(self, user: User, file_path: str, db: AsyncSession) -> 3:
         # 1. Парсинг
         if not self.parser.validate_format(file_path):
-            raise ValueError("Неверный формат файла")
+            raise ValueError("Формат файла не поддерживается текущим парсером.")
 
         transactions = self.parser.parse(file_path)
 
-        # Подготовка CSV буфера
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Дата', 'Сумма', 'Описание Банка', 'Категория', 'Комментарий/Заметка'])
-
-        # Получаем настройки пользователя
-        categories = user.categories_list.split(',')
-        hints = user.custom_prompts
-
         # 2. Обработка транзакций
-        # В идеале это нужно делать асинхронно батчами, но для MVP сделаем цикл
+        # Для оптимизации загружаем все заметки за весь период сразу, 
+        # но для MVP оставим поиск по каждой транзакции для точности окна.
+
+        categories = user.get_categories()
+        hints = user.custom_prompts or ""
+
         for tx in transactions:
-            # Ищем заметки в окне +- 2 дня (настройка)
-            window = timedelta(days=2)
+            window = timedelta(days=self.window_days)
             start_date = tx.date - window
             end_date = tx.date + window
 
-            # Запрос к БД за заметками
-            notes_db = db.query(Note).filter(
-                Note.user_id == user.id,
-                Note.created_at >= start_date,
-                Note.created_at <= end_date
-            ).all()
+            # Асинхронный запрос к БД
+            result = await db.execute(
+                select(Note).where(
+                    Note.user_id == user.id,
+                    Note.created_at >= start_date,
+                    Note.created_at <= end_date
+                )
+            )
+            notes_db = result.scalars().all()
 
             nearby_notes = [
-                UserNote(text=n.raw_text, timestamp=n.created_at, id=n.id)
+                UserNote(id=n.id, text=n.raw_text, timestamp=n.created_at)
                 for n in notes_db
             ]
 
-            # 3. LLM категоризация
-            result = await self.llm.categorize_transaction(
+            # LLM Classification
+            llm_result = await self.llm.categorize_transaction(
                 transaction=tx,
                 nearby_notes=nearby_notes,
                 categories=categories,
                 user_hints=hints
             )
 
-            tx.category = result.get('category', 'Не определено')
-            tx.comment = result.get('comment', '')
+            tx.category = llm_result.get('category', 'Разное')
+            tx.comment = llm_result.get('comment', '')
 
-            # Запись в CSV
-            writer.writerow([
-                tx.date.strftime("%Y-%m-%d"),
-                tx.amount,
-                tx.description,
-                tx.category,
-                tx.comment
-            ])
-
-        output.seek(0)
-        return output
+        # 3. Генерация отчета
+        return self.report_gen.generate(transactions)
