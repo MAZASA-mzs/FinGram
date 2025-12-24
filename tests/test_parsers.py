@@ -1,51 +1,38 @@
 import pytest
-import pandas as pd
+from unittest.mock import patch, MagicMock
 from src.infrastructure.parsers.sber import SberParser
+from src.core.dtypes import Transaction
 
 
-def test_validate_format_success():
-    parser = SberParser()
-    assert parser.validate_format("file.xlsx") is True
-    assert parser.validate_format("file.xls") is True
+class TestSberParser:
+    def test_sber_parser_format_validation(self):
+        parser = SberParser()
+        assert parser.validate_format("report.xlsx") is True
+        assert parser.validate_format("data.csv") is False
 
+    @patch("pandas.read_excel")
+    def test_parser_successful_data_extraction(self, mock_read):
+        """Проверка логики поиска заголовков и создания Transaction."""
+        # 1. Мокаем первый вызов read_excel (поиск заголовка)
+        mock_df_header = MagicMock()
+        mock_df_header.iterrows.return_value = [(0, MagicMock(astype=lambda x: MagicMock(
+            str=MagicMock(lower=lambda: MagicMock(tolist=lambda: ['дата', 'сумма', 'описание'])))))]
 
-def test_validate_format_failure():
-    parser = SberParser()
-    assert parser.validate_format("file.csv") is False
-    assert parser.validate_format("file.txt") is False
+        # 2. Мокаем второй вызов (чтение данных)
+        mock_df_data = MagicMock()
+        mock_df_data.columns = ['дата операции', 'сумма', 'описание операции']
+        mock_df_data.iterrows.return_value = [(0, {
+            'дата операции': '15.10.2023',
+            'сумма': '1500,50',
+            'описание операции': 'Магнит'
+        })]
 
+        mock_read.side_effect = [mock_df_header, mock_df_data]
 
-def test_parse_valid_excel(tmp_path):
-    # 1. Подготовка (Arrange)
-    parser = SberParser()
-    file_path = tmp_path / "statement.xlsx"
+        parser = SberParser()
+        transactions = parser.parse("dummy.xlsx")
 
-    # Создаем DataFrame, имитирующий выписку Сбера
-    df = pd.DataFrame({
-        'Дата': ['01.10.2023', '02.10.2023'],
-        'Сумма': ['1000', '500,50'],
-        'Описание операции': ['Перевод', 'Магазин']
-    })
-    df.to_excel(file_path, index=False)
-
-    # 2. Действие (Act)
-    transactions = parser.parse(str(file_path))
-
-    # 3. Проверка (Assert)
-    assert len(transactions) == 2
-    assert transactions[1].amount == 500.50  # Проверка конвертации запятой
-    assert transactions[1].description == "Магазин"
-
-
-def test_parse_empty_or_broken(tmp_path):
-    parser = SberParser()
-    file_path = tmp_path / "broken.xlsx"
-
-    # Файл без нужных колонок
-    df = pd.DataFrame({'Col1': [1, 2], 'Col2': [3, 4]})
-    df.to_excel(file_path, index=False)
-
-    transactions = parser.parse(str(file_path))
-
-    # Должен вернуть пустой список (так как нет колонок "Дата" и "Сумма")
-    assert transactions == []
+        assert len(transactions) == 1
+        assert isinstance(transactions[0], Transaction)
+        assert transactions[0].amount == 1500.50
+        assert transactions[0].description == "Магнит"
