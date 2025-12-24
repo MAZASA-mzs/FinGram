@@ -1,64 +1,99 @@
 import asyncio
-import uvicorn
 import logging
-from contextlib import asynccontextmanager
+import os
+import yaml
+from aiogram import Bot, Dispatcher
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from src.api import app as fastapi_app
-from src.bot import dp, bot, on_startup as bot_startup, on_shutdown as bot_shutdown
-from src.core.db import init_db
-from src.core.config import log # Используем настроенный логгер
-
-@asynccontextmanager
-async def lifespan(app):
-    """
-    Контекстный менеджер Lifespan для FastAPI.
-    Выполняется при старте и остановке API.
-    """
-    log.info("FastAPI приложение запускается...")
-    # 1. Инициализируем БД (создаем таблицы)
-    await init_db()
-    
-    # 2. Настраиваем бота (устанавливаем команды)
-    await bot_startup()
-    
-    # 3. Запускаем polling бота в фоновой задаче
-    # bot.delete_webhook() # Убедимся, что webhook отключен
-    bot_task = asyncio.create_task(dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()))
-    
-    log.info("Бот запущен в режиме polling.")
-    
-    yield # API готово к приему запросов
-    
-    # --- Код ниже выполнится при остановке API ---
-    log.info("FastAPI приложение останавливается...")
-    
-    # 1. Останавливаем бота
-    log.info("Остановка бота...")
-    bot_task.cancel()
-    try:
-        await bot_task
-    except asyncio.CancelledError:
-        log.info("Задача бота отменена.")
-    await bot_shutdown()
-    
-    log.info("Приложение остановлено.")
+from src.infrastructure.database.models import Base
+from src.infrastructure.reporters.basic_csv import BasicCSVReportGenerator
+from src.infrastructure.llm.yandex import YandexGPTProvider
+from src.infrastructure.llm.ollama import OllamaProvider
+from src.infrastructure.parsers.sber import SberParser
+from src.core.processor import Processor
+from src.bot.middlewares import AuthMiddleware
+from src.bot.handlers import common, settings
+from dotenv import load_dotenv
 
 
-# Применяем lifespan к FastAPI
-fastapi_app.router.lifespan_context = lifespan
+async def main():
+    logging.basicConfig(level=logging.INFO)
 
+    # 1. Загрузка конфигов
+    load_dotenv('config/.env')  # грузит .env
+    with open('config/config.yaml', 'r', encoding='utf-8') as f:
+        config_yaml = yaml.safe_load(f)
 
-# Точка входа для Uvicorn (если запускать через `uvicorn src.main:fastapi_app`)
-app = fastapi_app
+    # Объединяем конфиги для удобства
+    config = {
+        **config_yaml,
+        'token': os.getenv("TELEGRAM_BOT_TOKEN"),
+        'allowed_user_ids': os.getenv("ALLOWED_USER_IDS"),
+        # OLLAMA
+        'ollama_url': os.getenv("OLLAMA_API_URL"),
+        'ollama_model': os.getenv("OLLAMA_MODEL", "llama3"),
+        'db_url': os.getenv("DATABASE_URL"),
+        # YANDEX
+        'yandex_api_key': os.getenv("YANDEX_CLOUD_API_KEY"),
+        'yandex_folder_id': os.getenv("YANDEX_CLOUD_FOLDER"),
+        'yandex_model_name': os.getenv("YANDEX_CLOUD_MODEL", "yandexgpt-lite"),
+    }
 
+    # 2. Инициализация инфраструктуры
+    engine = create_async_engine(config['db_url'], echo=False)
+    async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-# Точка входа для запуска через `python -m src.main`
-if __name__ == "__main__":
-    log.info("Запуск приложения через Uvicorn...")
-    uvicorn.run(
-        "src.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True, # Включите для разработки
-        log_level="info"
+    # Создаем таблицы (в проде лучше использовать Alembic)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # 3. Сборка зависимостей (DI)
+    bank_parser = SberParser()
+    report_gen = BasicCSVReportGenerator()
+
+    provider_type = os.getenv("LLM_PROVIDER_TYPE", "ollama").lower()
+
+    if provider_type == "yandex":
+        llm_provider = YandexGPTProvider(
+            api_key=config['yandex_api_key'],
+            folder_id=config['yandex_folder_id'],
+            model_name=config['yandex_model_name']
+        )
+        logging.info("Using YandexGPT provider")
+    else:
+        llm_provider = OllamaProvider(
+            config['ollama_url'],
+            config['ollama_model']
+        )
+        logging.info("Using Ollama provider")
+
+    # Дальнейшая инициализация processor не меняется
+    processor = Processor(
+        parser=bank_parser,
+        llm=llm_provider,
+        report_gen=report_gen,
+        window_days=config['processing']['search_window_days']
     )
+
+    # 4. Бот
+    bot = Bot(token=config['token'])
+    dp = Dispatcher()
+
+    # Middleware
+    dp.message.middleware(AuthMiddleware(async_session, config))
+
+    # Внедряем зависимости в хендлеры
+    # Простой способ DI через workflow_data
+    dp["processor"] = processor
+    dp["bot"] = bot
+
+    # Роутеры
+    dp.include_router(settings.router)
+    dp.include_router(common.router)
+
+    logging.info("🚀 Bot started")
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
