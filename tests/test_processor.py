@@ -1,51 +1,43 @@
 import pytest
-import io
-import csv
 from unittest.mock import MagicMock, AsyncMock
+from datetime import datetime
 from src.core.processor import Processor
-from src.core.interfaces import UserNote
+from src.core.dtypes import UserNote
 
 
 @pytest.mark.asyncio
-async def test_processor_workflow(mock_user, sample_transaction, sample_note):
-    # --- 1. Mocks (Заглушки) ---
-
-    # Мок парсера
-    mock_parser = MagicMock()
-    mock_parser.validate_format.return_value = True
-
-    mock_parser.parse.return_value = [sample_transaction]
-
-    # Мок LLM
+async def test_processor_note_mapping_and_llm_call(mock_user, sample_transaction):
+    """
+    [Cause-Effect Analysis]
+    Проверка корректного преобразования объектов БД Note в DTO UserNote.
+    """
     mock_llm = AsyncMock()
-    mock_llm.categorize_transaction.return_value = {"category": "Тест", "comment": "Ок"}
+    mock_llm.categorize_transaction.return_value = {"category": "Еда", "comment": "Ок"}
 
-    # Мок Базы Данных (Session)
-    mock_db = MagicMock()
-    # Сложная цепочка вызовов SQLAlchemy: db.query().filter().all()
-    mock_query = mock_db.query.return_value
-    mock_filter = mock_query.filter.return_value
-    mock_filter.all.return_value = [sample_note]  # БД возвращает одну заметку
+    # Мок объекта из БД (Note)
+    db_note = MagicMock()
+    db_note.id = 101
+    db_note.raw_text = "Купил хлеб"  # Поле в модели БД
+    db_note.created_at = datetime.now()
 
-    # --- 2. Инициализация ---
-    processor = Processor(parser=mock_parser, llm=mock_llm)
+    # Настройка цепочки await db.execute() -> result.scalars().all()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [db_note]
 
-    # --- 3. Исполнение ---
-    csv_buffer = await processor.process_statement(mock_user, "dummy.xlsx", mock_db)
+    db_mock = AsyncMock()
+    db_mock.execute.return_value = mock_result
 
-    # --- 4. Проверки (Assertions) ---
+    processor = Processor(MagicMock(), mock_llm, MagicMock())
 
-    # А. Проверяем, что парсер вызвался
-    mock_parser.parse.assert_called_once_with("dummy.xlsx")
+    await processor._process_single_transaction(
+        sample_transaction, mock_user, db_mock, ["Еда"], ""
+    )
 
-    # Б. Проверяем, что LLM вызвалась с правильными данными
-    # Мы должны убедиться, что заметка из БД попала в промпт
-    args, _ = mock_llm.categorize_transaction.call_args
+    # Проверка вызова LLM: был ли передан правильный DTO
+    mock_llm.categorize_transaction.assert_called_once()
+    kwargs = mock_llm.categorize_transaction.call_args.kwargs
 
-    # В. Проверяем итоговый CSV
-    content = csv_buffer.getvalue()
-    reader = csv.reader(io.StringIO(content))
-    rows = list(reader)
-
-    assert rows[0] == ['Дата', 'Сумма', 'Описание Банка', 'Категория', 'Комментарий/Заметка']
-    assert rows[1][3] == "Тест"  # Категория от LLM
+    note_dto = kwargs['nearby_notes'][0]
+    assert isinstance(note_dto, UserNote)
+    assert note_dto.text == "Купил хлеб"  # Проверка маппинга из processor.py
+    assert note_dto.id == 101
