@@ -4,7 +4,7 @@ services:
     container_name: fingram_bot
     restart: unless-stopped
     volumes:
-      - ./data:/app/data           # Персистентное хранение БД и логов
+      - ./data:/app/data           # Хранение БД
       - ./config:/app/config       # Проброс конфигов
     env_file:
       - config/.env
@@ -19,5 +19,20 @@ services:
   #   ports:
   #     - "11434:11434"
 
+  # Опционально: можно запустить PostgresSQL базу данных
+  # postgres:
+  #   image: postgres:latest
+  #   container_name: postgres_container
+  #   environment:
+  #     POSTGRES_USER: postgres_user
+  #     POSTGRES_PASSWORD: postgres_password
+  #     POSTGRES_DB: postgres_db
+  #     PGDATA: /var/lib/postgresql/data/pgdata
+  #   ports:
+  #     - "5430:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data/pgdata
+
 volumes:
+  pgdata:
   ollama_data:
