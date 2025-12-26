@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from src.infrastructure.database.models import Base
 from src.infrastructure.reporters.basic_csv import BasicCSVReportGenerator
 from src.infrastructure.llm.yandex import YandexGPTProvider
-from src.infrastructure.llm.ollama import OllamaProvider
 from src.infrastructure.parsers.sber import SberParser
 from src.core.processor import Processor
 from src.bot.middlewares import AuthMiddleware
@@ -29,10 +28,7 @@ async def main():
         **config_yaml,
         'token': os.getenv("TELEGRAM_BOT_TOKEN"),
         'allowed_user_ids': os.getenv("ALLOWED_USER_IDS"),
-        # OLLAMA
-        'ollama_url': os.getenv("OLLAMA_API_URL"),
-        'ollama_model': os.getenv("OLLAMA_MODEL", "llama3"),
-        'db_url': os.getenv("DATABASE_URL"),
+        'db_url': os.getenv("DATABASE_URL", "sqlite+aiosqlite:///data/fingram.db"),
         # YANDEX
         'yandex_api_key': os.getenv("YANDEX_CLOUD_API_KEY"),
         'yandex_folder_id': os.getenv("YANDEX_CLOUD_FOLDER"),
@@ -61,11 +57,7 @@ async def main():
         )
         logging.info("Using YandexGPT provider")
     else:
-        llm_provider = OllamaProvider(
-            config['ollama_url'],
-            config['ollama_model']
-        )
-        logging.info("Using Ollama provider")
+        assert 0, "No LLM provider available"
 
     # Дальнейшая инициализация processor не меняется
     processor = Processor(
