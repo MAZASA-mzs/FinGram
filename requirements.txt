@@ -1,12 +1,11 @@
 pytest
+behave
 python-dotenv
 pyyaml
 # Telegram Bot
 aiogram>=3.7.0
 
-# API Framework
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
+telethon
 
 # Database (ORM)
 sqlalchemy[asyncio]>=2.0.30
