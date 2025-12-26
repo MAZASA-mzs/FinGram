@@ -72,35 +72,45 @@ class SberParser(BaseBankParser):
 
         return transactions
 
+    import re
+    from datetime import datetime
+
     def _parse_date_robust(self, val) -> datetime:
-        """Более надежный парсинг даты."""
+        """Более надежный парсинг даты с поддержкой тире и различных форматов."""
         if isinstance(val, datetime):
             return val
 
+        # Приводим к строке, чистим пробелы и приводим к нижнему регистру
         val_str = str(val).strip().lower()
 
-        # Словарь замен
+        # Словарь месяцев (важно: 'мая' и 'май' обрабатываются корректно)
         months = {
-            'янв': '01', 'фев': '02', 'мар': '03', 'апр': '04', 'май': '05', 'мая': '05',
+            'янв': '01', 'фев': '02', 'мар': '03', 'апр': '04', 'мая': '05', 'май': '05',
             'июн': '06', 'июл': '07', 'авг': '08', 'сен': '09', 'окт': '10', 'ноя': '11', 'дек': '12'
         }
 
-        # Заменяем буквенные месяцы на цифры
+        # Заменяем названия месяцев на числа
         for k, v in months.items():
             if k in val_str:
-                val_str = val_str.replace(k, v).replace('.', ' ')
+                # Заменяем месяц и пробуем нормализовать разделители
+                val_str = val_str.replace(k, v)
                 break
 
-        # Убираем все лишнее, оставляем цифры, точки, пробелы, двоеточия
-        val_str = re.sub(r'[^\d\s\.:]', '', val_str)
+        # Оставляем цифры, пробелы, точки, двоеточия И тире
+        val_str = re.sub(r'[^\d\s\.:-]', ' ', val_str)
+        # Убираем двойные пробелы
         val_str = re.sub(r'\s+', ' ', val_str).strip()
 
+        # Список форматов для проверки
         formats = [
             "%d.%m.%Y %H:%M",
             "%d.%m.%Y",
             "%d %m %Y %H:%M",
             "%d %m %Y",
-            "%Y-%m-%d"
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+            "%d-%m-%Y"
         ]
 
         for fmt in formats:
@@ -109,15 +119,18 @@ class SberParser(BaseBankParser):
             except ValueError:
                 continue
 
-        # Fallback: пробуем распарсить просто как день.месяц.год, если год в конце
+        # Fallback: ручной разбор, если стандартные форматы не подошли
         try:
-            parts = val_str.split()
-            if len(parts) >= 3:
-                # Предполагаем формат ДД ММ ГГГГ
-                day, month, year = parts[0], parts[1], parts[2]
-                if len(year) == 4:
-                    return datetime(int(year), int(month), int(day))
-        except:
+            # Ищем все группы цифр в строке
+            nums = re.findall(r'\d+', val_str)
+            if len(nums) >= 3:
+                # Если первая группа из 4 цифр — это год (ГГГГ ММ ДД)
+                if len(nums[0]) == 4:
+                    return datetime(int(nums[0]), int(nums[1]), int(nums[2]))
+                # Иначе считаем, что год в конце (ДД ММ ГГГГ)
+                elif len(nums[2]) == 4:
+                    return datetime(int(nums[2]), int(nums[1]), int(nums[0]))
+        except Exception:
             pass
 
         print(f"!!! Failed to parse date: {val}")

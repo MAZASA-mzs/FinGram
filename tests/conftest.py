@@ -1,3 +1,4 @@
+import io
 import pytest
 import pytest_asyncio
 import json as js
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from src.infrastructure.database.models import Base, User, Note
 from datetime import datetime
 
-# Используем in-memory SQLite для тестов
+# In-memory SQLite для тестов
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 @pytest_asyncio.fixture
@@ -32,21 +33,24 @@ async def test_user(db_session: AsyncSession):
     await db_session.refresh(user)
     return user
 
+
 @pytest.fixture
 def create_dummy_excel(tmp_path):
-    """Создает временный Excel файл в формате Сбера"""
     def _create(filename="statement.xlsx"):
-        data = {
+        data_json = """
+        {
             "Дата": ["01.01.2024", "02.01.2024"],
             "Сумма в валюте операции": [500.0, 1500.0],
-            "Описание": ["Покупка в магазине", "Перевод"],
+            "Описание": ["Покупка", "Перевод"],
             "Валюта": ["RUB", "RUB"]
         }
-        df = pd.read_json(js.dumps(data)) # Dummy conversion
-        df = pd.DataFrame(data)
-        # Добавляем пустые строки сверху, как в реальной выписке
+        """
+        # ИСПОЛЬЗУЕМ io.StringIO для исправления warning
+        df = pd.read_json(io.StringIO(data_json))
+
         path = tmp_path / filename
         with pd.ExcelWriter(path, engine='openpyxl') as writer:
             df.to_excel(writer, startrow=3, index=False)
         return str(path)
+
     return _create

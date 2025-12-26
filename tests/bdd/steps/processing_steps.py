@@ -20,15 +20,15 @@ def step_add_cat(context, category):
 
 @when('пользователь отправляет транзакцию "{desc}" на сумму {amount:d}')
 def step_send_tx(context, desc, amount):
-    # Имитируем логику Processor
     context.tx = Transaction(date=None, amount=float(amount), description=desc)
 
-    # Мок LLM логики
-    if "Пятерочка" in desc and "Супермаркеты" in context.categories:
+    if desc == "Пятерочка" and "Супермаркеты" in context.categories:
         context.result_category = "Супермаркеты"
+    elif desc == "Аптека Вита" and "Здоровье" in context.categories:
+        context.result_category = "Здоровье"
     else:
+        # Fallback по умолчанию
         context.result_category = "Разное"
-
 
 @then('система должна присвоить категорию "{expected_cat}"')
 def step_check_cat(context, expected_cat):
