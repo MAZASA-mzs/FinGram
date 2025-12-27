@@ -19,7 +19,7 @@ class User(Base):
     # Пользовательские подсказки для LLM
     custom_prompts = Column(Text, default="")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     notes = relationship("Note", back_populates="user")
 
     def get_categories(self) -> list[str]:
@@ -37,6 +37,6 @@ class Note(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
     raw_text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     user = relationship("User", back_populates="notes")

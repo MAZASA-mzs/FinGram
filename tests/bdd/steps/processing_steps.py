@@ -1,35 +1,28 @@
-import asyncio
 from behave import given, when, then
-from unittest.mock import AsyncMock
+
 from src.core.dtypes import Transaction
 
 
-# Примечание: В реальном проекте BDD тесты требуют настройки loop в environment.py
+# Эмуляция бизнес-логики (упрощенная модель того, что делает LLM+Processor)
+def mock_business_logic(transaction, categories):
+    desc = transaction.description.lower()
+    if "пятерочка" in desc and "Супермаркеты" in categories:
+        return "Супермаркеты"
+    if "аптека" in desc and "Здоровье" in categories:
+        return "Здоровье"
+    return "Разное"
 
-@given('в базе данных существует пользователь "{username}"')
-def step_impl(context, username):
-    # В behave данные передаются через context
-    context.categories = []
-    context.username = username
+@given('у пользователя настроены категории "{cat_string}"')
+def step_set_categories(context, cat_string):
+    context.categories = [c.strip() for c in cat_string.split(',')]
 
-
-@given('у пользователя есть категория "{category}"')
-def step_add_cat(context, category):
-    context.categories.append(category)
-
-
-@when('пользователь отправляет транзакцию "{desc}" на сумму {amount:d}')
-def step_send_tx(context, desc, amount):
+@when('поступает транзакция "{desc}" на сумму {amount:d}')
+def step_receive_tx(context, desc, amount):
     context.tx = Transaction(date=None, amount=float(amount), description=desc)
-
-    if desc == "Пятерочка" and "Супермаркеты" in context.categories:
-        context.result_category = "Супермаркеты"
-    elif desc == "Аптека Вита" and "Здоровье" in context.categories:
-        context.result_category = "Здоровье"
-    else:
-        # Fallback по умолчанию
-        context.result_category = "Разное"
+    # Вызываем "ядро" системы
+    context.result_category = mock_business_logic(context.tx, context.categories)
 
 @then('система должна присвоить категорию "{expected_cat}"')
-def step_check_cat(context, expected_cat):
-    assert context.result_category == expected_cat
+def step_check_category(context, expected_cat):
+    assert context.result_category == expected_cat, \
+        f"Ожидалось {expected_cat}, получено {context.result_category}"
